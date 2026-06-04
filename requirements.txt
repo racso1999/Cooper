@@ -1,0 +1,15 @@
+playwright
+BeautifulSoup4
+Chromium
+
+python-dotenv
+langchain-openai
+langchain-google-genai
+langchain
+langchain-tavily
+langgraph
+pydantic
+typing_extensions
+langgraph_supervisor
+fastapi
+uvicorn
