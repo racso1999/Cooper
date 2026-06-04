@@ -198,6 +198,8 @@ checkpointer = InMemorySaver()
 
 graph = graph_builder.compile(checkpointer=checkpointer)
 
+graph.get_graph().draw_mermaid_png(output_file_path='graph.png')
+
 config = {'configurable': {'thread_id': uuid.uuid4()}}
 
 while True:
