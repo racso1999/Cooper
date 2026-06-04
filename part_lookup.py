@@ -4,9 +4,9 @@ from curl_cffi import requests as cf_requests
 from bs4 import BeautifulSoup
 
 # Set your part number here
-part_number = "WPW10276325"  # Example part number; replace with your own
+part_number = "PS16218028"
 
-# Mimics Chrome browser at the network level to bypass PartSelect's WAF.
+# Mimics a real Chrome browser at the network level to bypass PartSelect's WAF.
 session = cf_requests.Session(impersonate="chrome124")
 
 
@@ -32,10 +32,10 @@ def get_part_info(part_number: str) -> dict | None:
     soup = BeautifulSoup(product_page.text, "html.parser")
     is_search_results = "/partsearchresult/" in product_url
 
-    # Fetch part name using structured data if available, otherwise fallback to page title or first h1. Search results page has a different structure, so we handle it separately.
+    # --- Name ---
     name = None
     if is_search_results:
-    
+        # First listing title on the search results page
         title_div = soup.find("div", class_="table-row__info__part-title")
         if title_div:
             raw = title_div.get_text(strip=True)
@@ -57,14 +57,15 @@ def get_part_info(part_number: str) -> dict | None:
     if not name:
         return None
 
-    # Fetch part price
-
+    # --- Price ---
+    # Product page uses span.js-partPrice; search results page uses div.bold.info-item.price
     price_tag = soup.find("span", class_="js-partPrice") or \
-                soup.find("div", class_=lambda c: c and "bold" in c and "price" in c and "info-item" in c)
+                soup.find("div", class_=lambda c: c and "bold" in c and "price" in c and "info-item" in c) # type: ignore
     raw_price = price_tag.get_text(strip=True).lstrip("$") if price_tag else None
     price = f"${raw_price}" if raw_price else None
 
-    # fetch part image URL
+    # --- Image --- (same CDN pattern on both page types)
+    CDN = "partselectcom-gtcdcddbene3cpes.z01.azurefd.net"
     image_url = None
     for img in soup.find_all("img", src=True):
         src = img["src"]
