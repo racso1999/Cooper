@@ -2,7 +2,7 @@ curl_cffi
 playwright
 BeautifulSoup4
 Chromium
-
+langchain-openai
 python-dotenv
 langchain-openai
 langchain-google-genai
@@ -14,3 +14,4 @@ typing_extensions
 langgraph_supervisor
 fastapi
 uvicorn
+uuid
