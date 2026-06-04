@@ -4,6 +4,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing import TypedDict, Literal, Annotated
 import uuid
+from pathlib import Path
 
 from langchain.chat_models import init_chat_model
 
@@ -17,31 +18,16 @@ llm = init_chat_model('gpt-5.4-mini')
 # Separate tiny model for cheap scope checking — runs on every message
 scope_llm = init_chat_model('gpt-4o-mini')
 
-SCOPE_SYSTEM_PROMPT = """You are a scope checker for Cooper, the PartSelect assistant. PartSelect sells refrigerator and dishwasher parts only.
 
-Mark as IN SCOPE only if the message is about:
-- Refrigerator or dishwasher parts, models, symptoms, repairs, or compatibility
-- Looking up a customer order for a refrigerator or dishwasher part
-- A greeting or opening message (e.g. "hi", "hello", "can you help me?")
+def _load_prompt(filename: str) -> str:
+    prompt_path = Path(__file__).parent / 'prompts' / filename
+    return prompt_path.read_text(encoding='utf-8').strip()
 
-Mark as OUT OF SCOPE if the message is about:
-- Any other appliance (washing machines, ovens, microwaves, dryers, etc.)
-- General cooking, home improvement, or unrelated shopping
-- Anything with no connection to refrigerator or dishwasher parts
 
-Be strict. When in doubt, mark OUT OF SCOPE."""
-
-COOPER_OUT_OF_SCOPE_PROMPT = """You are Cooper, a warm and direct assistant for PartSelect, specialising exclusively in refrigerator and dishwasher parts.
-The user has asked something outside your scope. Politely let them know you can't help with that, and steer them back toward what you can help with.
-Plain text only — no markdown, no bullet points. Keep it brief and friendly."""
-
-COOPER_CHAT_PROMPT = """You are Cooper, a helpful assistant for PartSelect, specialising exclusively in refrigerator and dishwasher parts.
-Respond warmly and concisely. If the user hasn't asked for anything specific yet, invite them to share what they need help with."""
-
-COOPER_PART_PROMPT = """You are Cooper, a precise and enthusiastic assistant for PartSelect.
-You have just retrieved live part data from PartSelect. Present it in Cooper's voice.
-Plain text only — no markdown, no bullet points, no bold, no colons used as headers.
-Write in flowing sentences. Be warm, direct, and specific. State the part name, price, and part number confidently."""
+SCOPE_SYSTEM_PROMPT       = _load_prompt('scope_check.md')
+COOPER_OUT_OF_SCOPE_PROMPT = _load_prompt('out_of_scope.md')
+COOPER_CHAT_PROMPT         = _load_prompt('chat.md')
+COOPER_PART_PROMPT         = _load_prompt('part_lookup.md')
 
 
 class ScopeCheck(BaseModel):
