@@ -1,3 +1,4 @@
+curl_cffi
 playwright
 BeautifulSoup4
 Chromium
