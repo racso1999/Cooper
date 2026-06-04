@@ -7,181 +7,177 @@ import uuid
 from pathlib import Path
 
 from langchain.chat_models import init_chat_model
-
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from part_lookup import get_part_info as fetch_part_info
+from model_lookup import get_model_info as fetch_model_info
 
 
-llm = init_chat_model('gpt-5.4-mini')
-# Separate tiny model for cheap scope checking — runs on every message
-scope_llm = init_chat_model('gpt-4o-mini')
+llm = init_chat_model('gpt-4o-mini')
 
 
 def _load_prompt(filename: str) -> str:
-    prompt_path = Path(__file__).parent / 'prompts' / filename
-    return prompt_path.read_text(encoding='utf-8').strip()
+    return (Path(__file__).parent / 'prompts' / filename).read_text(encoding='utf-8').strip()
 
 
-SCOPE_SYSTEM_PROMPT       = _load_prompt('scope_check.md')
-COOPER_OUT_OF_SCOPE_PROMPT = _load_prompt('out_of_scope.md')
-COOPER_CHAT_PROMPT         = _load_prompt('chat.md')
-COOPER_PART_PROMPT         = _load_prompt('part_lookup.md')
+COOPER_SYSTEM_PROMPT = _load_prompt('cooper.md')
+COOPER_PART_PROMPT   = _load_prompt('part_lookup.md')
+COOPER_MODEL_PROMPT  = _load_prompt('model_lookup.md')
 
 
-class ScopeCheck(BaseModel):
-    in_scope: bool = Field(description="True if the query relates to refrigerator or dishwasher parts/repairs on PartSelect, or is a greeting. False otherwise.")
-
-class PartNumberExtractor(BaseModel):
-    part_number: str | None = Field(description="The most recent PS part number in the conversation (e.g. PS11752778). None if not present.")
-
-class ModelNumberExtractor(BaseModel):
-    model_number: str | None = Field(description="The appliance model number in the conversation (e.g. WDT780SAEM1). None if not present.")
-
-class IntentClassifier(BaseModel):
-    # List allows multiple intents — LangGraph fans out to each corresponding node in parallel
-    message_intent: list[Literal['model_lookup', 'part_lookup', 'order_lookup', 'repairRAG']] = Field(
-        description="Classify which agent(s) to call. Options: model_lookup (look up a model), part_lookup (find a part), order_lookup (track an order), repairRAG (repair guidance). Return multiple if several agents are needed. Return an empty list if no specific agent is needed (e.g. greeting or general chat)."
+class CooperOutput(BaseModel):
+    reply: str | None = Field(description="Cooper's response to the user. Null when routing to one or more specialist nodes — those nodes will provide the response.")
+    intent: list[Literal['part_lookup', 'model_lookup', 'repair_lookup', 'order_lookup']] = Field(
+        description="Specialist nodes to call. Return an empty list when no node is needed (greetings, chat, out-of-scope). Return multiple to fan out in parallel."
     )
+    part_number: str | None = Field(default=None, description="PS part number extracted from the conversation. Required when part_lookup is in intent.")
+    model_number: str | None = Field(default=None, description="Appliance model number extracted from the conversation. Required when model_lookup is in intent.")
+
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
-    message_intent: list[str] | None
-    # Identifiers extracted by supervisor and passed directly to agent nodes
+    intent: list[str] | None
     part_number: str | None
     model_number: str | None
+    part_info: dict | None  # raw data returned by get_part_info for Cooper to format
 
 
-def supervisor_node(state: State):
-    # Returning from an agent — agents have already added their responses, end this turn
+# Cached structured-output chain
+_cooper = llm.with_structured_output(CooperOutput)
+
+
+def cooper_node(state: State):
+    # Returning from get_part_info — format the raw data and respond
+    if state.get('part_info'):
+        info = state['part_info']
+        if 'error' in info:
+            return {'intent': [], 'part_info': None, 'messages': [{'role': 'assistant', 'content': info['error']}]}
+        part_context = (
+            f"Part number: {info['part_number']}\n"
+            f"Name: {info['name']}\n"
+            f"Price: {info['price'] or 'not listed'}\n"
+            f"Image URL: {info['image_url'] or 'not available'}"
+        )
+        response = llm.invoke([
+            {'role': 'system', 'content': COOPER_PART_PROMPT},
+            {'role': 'system', 'content': part_context},
+            *state['messages']
+        ])
+        return {'intent': [], 'part_info': None, 'messages': [{'role': 'assistant', 'content': response.content}]}
+
+    # Returning from any other specialist node — it already added its response, end the turn
     if state['messages'][-1].type != 'human':
-        return {'message_intent': []}
+        return {'intent': []}
 
-    # Step 1: cheap scope check on latest message only
-    scope_result = scope_llm.with_structured_output(ScopeCheck).invoke([
-        {'role': 'system', 'content': SCOPE_SYSTEM_PROMPT},
-        {'role': 'user', 'content': state['messages'][-1].content}
-    ])
-
-    if not scope_result.in_scope:
-        response = llm.invoke([{'role': 'system', 'content': COOPER_OUT_OF_SCOPE_PROMPT}] + state['messages'])
-        return {'message_intent': [], 'messages': [{'role': 'assistant', 'content': response.content}]}
-
-    # Step 2: intent classification over full conversation history
-    intent_result = llm.with_structured_output(IntentClassifier).invoke([
-        {'role': 'system', 'content': 'Determine which agent(s) to call based on the conversation. Options: model_lookup, part_lookup, order_lookup, repairRAG. Return an empty list for greetings or general chat.'},
+    result = _cooper.invoke([
+        {'role': 'system', 'content': COOPER_SYSTEM_PROMPT},
         *state['messages']
     ])
 
-    if not intent_result.message_intent:
-        response = llm.invoke([{'role': 'system', 'content': COOPER_CHAT_PROMPT}] + state['messages'])
-        return {'message_intent': [], 'messages': [{'role': 'assistant', 'content': response.content}]}
+    intent = list(result.intent)
 
-    # Step 3: validate required identifiers before routing — only activate agents when we have what they need
-    routable = []
-    updates = {}
-    missing = []
+    # Guard: strip lookup intents if the required identifier wasn't extracted
+    if 'part_lookup' in intent and not result.part_number:
+        intent.remove('part_lookup')
+    if 'model_lookup' in intent and not result.model_number:
+        intent.remove('model_lookup')
 
-    if 'part_lookup' in intent_result.message_intent:
-        extracted = llm.with_structured_output(PartNumberExtractor).invoke([
-            {'role': 'system', 'content': 'Extract the most recent PS part number from the conversation (e.g. PS11752778). Return null if not present.'},
-            *state['messages']
-        ])
-        if extracted.part_number:
-            routable.append('part_lookup')
-            updates['part_number'] = extracted.part_number
-        else:
-            missing.append('PS part number (e.g. PS11752778)')
+    updates: dict = {'intent': intent}
 
-    if 'model_lookup' in intent_result.message_intent:
-        extracted = llm.with_structured_output(ModelNumberExtractor).invoke([
-            {'role': 'system', 'content': 'Extract the appliance model number from the conversation (e.g. WDT780SAEM1). Return null if not present.'},
-            *state['messages']
-        ])
-        if extracted.model_number:
-            routable.append('model_lookup')
-            updates['model_number'] = extracted.model_number
-        else:
-            missing.append('model number (you can find it on a sticker inside the appliance door)')
+    if result.reply:
+        updates['messages'] = [{'role': 'assistant', 'content': result.reply}]
+    if result.part_number:
+        updates['part_number'] = result.part_number
+    if result.model_number:
+        updates['model_number'] = result.model_number
 
-    # repairRAG and order_lookup pass through — their nodes handle any further missing info
-    for intent in ['repairRAG', 'order_lookup']:
-        if intent in intent_result.message_intent:
-            routable.append(intent)
-
-    if missing:
-        # Ask for missing identifiers in Cooper's voice before routing any agents
-        missing_str = ' and '.join(missing)
-        response = llm.invoke([
-            {'role': 'system', 'content': COOPER_CHAT_PROMPT},
-            *state['messages'],
-            {'role': 'system', 'content': f'Ask the user for their {missing_str} before you can proceed. Keep it brief and warm.'}
-        ])
-        return {'message_intent': [], 'messages': [{'role': 'assistant', 'content': response.content}]}
-
-    return {'message_intent': routable, **updates}
+    return updates
 
 
 def get_part_info(state: State):
-    # part_number is guaranteed by supervisor — no need to re-extract or ask
-    part_number = state['part_number']
-
-    info = fetch_part_info(part_number)
+    # Fetch only — no LLM call. Raw data is stored in state for cooper_node to format.
+    info = fetch_part_info(state.get('part_number'))
 
     if not info:
-        return {'messages': [{'role': 'assistant', 'content': f"I wasn't able to find part {part_number} on PartSelect. Double-check the number and try again."}]}
+        return {'part_info': {'error': f"I wasn't able to find part {state.get('part_number')} on PartSelect. Double-check the number and try again."}}
 
-    part_context = f"Part number: {part_number}\nName: {info['name']}\nPrice: {info['price'] or 'not listed'}"
+    return {'part_info': {
+        'part_number': state.get('part_number'),
+        'name': info['name'],
+        'price': info['price'],
+        'image_url': info['image_url'],
+    }}
+
+
+def get_model_info(state: State):
+    info = fetch_model_info(state.get('model_number'))
+
+    if not info:
+        return {'messages': [{'role': 'assistant', 'content': f"I wasn't able to find model {state.get('model_number')} on PartSelect. Double-check the number and try again."}]}
+
+    symptom_parts: dict[str, list] = {}
+    for part in info['compatible_parts']:
+        for symptom, rate in part['fixes'].items():
+            symptom_parts.setdefault(symptom, []).append(
+                {'part_number': part['part_number'], 'name': part['name'], 'fix_rate': rate or 0}
+            )
+    for parts in symptom_parts.values():
+        parts.sort(key=lambda p: p['fix_rate'], reverse=True)
+
+    symptom_lines = '\n'.join(
+        f"  {symptom}: {parts[0]['name']} ({parts[0]['part_number']}) — {parts[0]['fix_rate']}% fix rate"
+        for symptom, parts in symptom_parts.items()
+    )
+    model_context = (
+        f"Model: {info['model_number']}\n"
+        f"Brand: {info['brand']}\n"
+        f"Type: {info['appliance_type']}\n"
+        f"Known symptoms and top fix for each:\n{symptom_lines}"
+    )
+
     response = llm.invoke([
-        {'role': 'system', 'content': COOPER_PART_PROMPT},
-        {'role': 'system', 'content': part_context},
+        {'role': 'system', 'content': COOPER_MODEL_PROMPT},
+        {'role': 'system', 'content': model_context},
         *state['messages']
     ])
     return {'messages': [{'role': 'assistant', 'content': response.content}]}
 
-def get_model_info(state: State):
-    # model_number is guaranteed by supervisor
-    messages = [{'role': 'system', 'content': 'No matter what the query is, say MODEL LOOKUP.'}] + state['messages']
-    response = llm.invoke(messages)
-    return {'messages': [{'role': 'assistant', 'content': response.content}]}
 
 def get_repair_info(state: State):
-    messages = [{'role': 'system', 'content': 'No matter what the query is, say REPAIR RAG.'}] + state['messages']
-    response = llm.invoke(messages)
-    return {'messages': [{'role': 'assistant', 'content': response.content}]}
+    # TODO: implement repair RAG
+    return {'messages': [{'role': 'assistant', 'content': 'REPAIR RAG'}]}
+
 
 def get_order_info(state: State):
-    messages = [{'role': 'system', 'content': 'No matter what the query is, say ORDER LOOKUP.'}] + state['messages']
-    response = llm.invoke(messages)
-    return {'messages': [{'role': 'assistant', 'content': response.content}]}
+    # TODO: implement order lookup
+    return {'messages': [{'role': 'assistant', 'content': 'ORDER LOOKUP'}]}
 
 
 graph_builder = StateGraph(State)
 
-graph_builder.add_node('supervisor_node', supervisor_node)
+graph_builder.add_node('cooper_node', cooper_node)
 graph_builder.add_node('get_part_info', get_part_info)
 graph_builder.add_node('get_model_info', get_model_info)
 graph_builder.add_node('get_repair_info', get_repair_info)
 graph_builder.add_node('get_order_info', get_order_info)
 
-graph_builder.add_edge(START, 'supervisor_node')
-# Empty intent: supervisor already responded (chat, out-of-scope, or asking for missing info) — END
-# Non-empty list: fans out in parallel to all matched agent nodes
+graph_builder.add_edge(START, 'cooper_node')
 graph_builder.add_conditional_edges(
-    'supervisor_node',
-    lambda state: state['message_intent'] if state['message_intent'] else 'done',
-    {'part_lookup': 'get_part_info', 'model_lookup': 'get_model_info', 'repairRAG': 'get_repair_info', 'order_lookup': 'get_order_info', 'done': END}
+    'cooper_node',
+    lambda state: state['intent'] if state['intent'] else 'done',
+    {'part_lookup': 'get_part_info', 'model_lookup': 'get_model_info',
+     'repair_lookup': 'get_repair_info', 'order_lookup': 'get_order_info', 'done': END}
 )
 
-# All agents return to supervisor so it can decide whether more work is needed
-graph_builder.add_edge('get_part_info', 'supervisor_node')
-graph_builder.add_edge('get_model_info', 'supervisor_node')
-graph_builder.add_edge('get_repair_info', 'supervisor_node')
-graph_builder.add_edge('get_order_info', 'supervisor_node')
+# All specialist nodes return to cooper_node — it detects the AI response and exits cleanly
+graph_builder.add_edge('get_part_info', 'cooper_node')
+graph_builder.add_edge('get_model_info', 'cooper_node')
+graph_builder.add_edge('get_repair_info', 'cooper_node')
+graph_builder.add_edge('get_order_info', 'cooper_node')
 
 checkpointer = InMemorySaver()
-
 graph = graph_builder.compile(checkpointer=checkpointer)
 
 graph.get_graph().draw_mermaid_png(output_file_path='graph.png')
@@ -192,7 +188,6 @@ while True:
     user_input = input("Enter your query: ")
     result = graph.invoke({'messages': [{'role': 'user', 'content': user_input}]}, config=config)
 
-    # Only print AI messages from this turn (everything after the last human message)
     last_human = max(i for i, m in enumerate(result['messages']) if m.type == 'human')
     for msg in result['messages'][last_human + 1:]:
         if msg.type == 'ai':
