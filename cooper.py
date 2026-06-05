@@ -23,8 +23,7 @@ def _load_prompt(filename: str) -> str:
 
 
 COOPER_SYSTEM_PROMPT = _load_prompt('cooper.md')
-COOPER_PART_PROMPT   = _load_prompt('part_lookup.md')
-COOPER_MODEL_PROMPT  = _load_prompt('model_lookup.md')
+COMPILER_PROMPT      = _load_prompt('compiler.md')
 
 
 class CooperOutput(BaseModel):
@@ -41,7 +40,11 @@ class State(TypedDict):
     intent: list[str] | None
     part_number: str | None
     model_number: str | None
-    part_info: dict | None  # raw data returned by get_part_info for Cooper to format
+    # Raw data set by specialist nodes, read and cleared by compiler_node
+    part_info: dict | None
+    model_info: dict | None
+    repair_info: str | None
+    order_info: str | None
 
 
 # Cached structured-output chain
@@ -49,28 +52,6 @@ _cooper = llm.with_structured_output(CooperOutput)
 
 
 def cooper_node(state: State):
-    # Returning from get_part_info — format the raw data and respond
-    if state.get('part_info'):
-        info = state['part_info']
-        if 'error' in info:
-            return {'intent': [], 'part_info': None, 'messages': [{'role': 'assistant', 'content': info['error']}]}
-        part_context = (
-            f"Part number: {info['part_number']}\n"
-            f"Name: {info['name']}\n"
-            f"Price: {info['price'] or 'not listed'}\n"
-            f"Image URL: {info['image_url'] or 'not available'}"
-        )
-        response = llm.invoke([
-            {'role': 'system', 'content': COOPER_PART_PROMPT},
-            {'role': 'system', 'content': part_context},
-            *state['messages']
-        ])
-        return {'intent': [], 'part_info': None, 'messages': [{'role': 'assistant', 'content': response.content}]}
-
-    # Returning from any other specialist node — it already added its response, end the turn
-    if state['messages'][-1].type != 'human':
-        return {'intent': []}
-
     result = _cooper.invoke([
         {'role': 'system', 'content': COOPER_SYSTEM_PROMPT},
         *state['messages']
@@ -97,11 +78,11 @@ def cooper_node(state: State):
 
 
 def get_part_info(state: State):
-    # Fetch only — no LLM call. Raw data is stored in state for cooper_node to format.
+    # Fetch only — no LLM. Stores raw data for compiler_node to format.
     info = fetch_part_info(state.get('part_number'))
 
     if not info:
-        return {'part_info': {'error': f"I wasn't able to find part {state.get('part_number')} on PartSelect. Double-check the number and try again."}}
+        return {'part_info': {'error': f"I wasn't able to find part {state.get('part_number')} on PartSelect."}}
 
     return {'part_info': {
         'part_number': state.get('part_number'),
@@ -112,10 +93,11 @@ def get_part_info(state: State):
 
 
 def get_model_info(state: State):
+    # Fetch only — no LLM. Stores raw data for compiler_node to format.
     info = fetch_model_info(state.get('model_number'))
 
     if not info:
-        return {'messages': [{'role': 'assistant', 'content': f"I wasn't able to find model {state.get('model_number')} on PartSelect. Double-check the number and try again."}]}
+        return {'model_info': {'error': f"I wasn't able to find model {state.get('model_number')} on PartSelect."}}
 
     symptom_parts: dict[str, list] = {}
     for part in info['compatible_parts']:
@@ -126,33 +108,83 @@ def get_model_info(state: State):
     for parts in symptom_parts.values():
         parts.sort(key=lambda p: p['fix_rate'], reverse=True)
 
-    symptom_lines = '\n'.join(
-        f"  {symptom}: {parts[0]['name']} ({parts[0]['part_number']}) — {parts[0]['fix_rate']}% fix rate"
-        for symptom, parts in symptom_parts.items()
-    )
-    model_context = (
-        f"Model: {info['model_number']}\n"
-        f"Brand: {info['brand']}\n"
-        f"Type: {info['appliance_type']}\n"
-        f"Known symptoms and top fix for each:\n{symptom_lines}"
-    )
-
-    response = llm.invoke([
-        {'role': 'system', 'content': COOPER_MODEL_PROMPT},
-        {'role': 'system', 'content': model_context},
-        *state['messages']
-    ])
-    return {'messages': [{'role': 'assistant', 'content': response.content}]}
+    return {'model_info': {
+        'model_number': info['model_number'],
+        'brand': info['brand'],
+        'appliance_type': info['appliance_type'],
+        'symptoms': {
+            symptom: {'part_number': parts[0]['part_number'], 'name': parts[0]['name'], 'fix_rate': parts[0]['fix_rate']}
+            for symptom, parts in symptom_parts.items()
+        }
+    }}
 
 
 def get_repair_info(state: State):
     # TODO: implement repair RAG
-    return {'messages': [{'role': 'assistant', 'content': 'REPAIR RAG'}]}
+    return {'repair_info': 'REPAIR RAG (stub)'}
 
 
 def get_order_info(state: State):
     # TODO: implement order lookup
-    return {'messages': [{'role': 'assistant', 'content': 'ORDER LOOKUP'}]}
+    return {'order_info': 'ORDER LOOKUP (stub)'}
+
+
+def compiler_node(state: State):
+    # Build a context block from whatever specialist nodes populated this turn
+    sections = []
+
+    if state.get('part_info'):
+        info = state['part_info']
+        if 'error' in info:
+            sections.append(f"Part lookup: {info['error']}")
+        else:
+            sections.append(
+                f"Part lookup result:\n"
+                f"  Part number: {info['part_number']}\n"
+                f"  Name: {info['name']}\n"
+                f"  Price: {info['price'] or 'not listed'}\n"
+                f"  Image URL: {info['image_url'] or 'not available'}"
+            )
+
+    if state.get('model_info'):
+        info = state['model_info']
+        if 'error' in info:
+            sections.append(f"Model lookup: {info['error']}")
+        else:
+            symptom_lines = '\n'.join(
+                f"    {symptom}: {data['name']} ({data['part_number']}) — {data['fix_rate']}% fix rate"
+                for symptom, data in info['symptoms'].items()
+            )
+            sections.append(
+                f"Model lookup result:\n"
+                f"  Model: {info['model_number']}\n"
+                f"  Brand: {info['brand']}\n"
+                f"  Type: {info['appliance_type']}\n"
+                f"  Symptoms and top fix:\n{symptom_lines}"
+            )
+
+    if state.get('repair_info'):
+        sections.append(f"Repair info:\n  {state['repair_info']}")
+
+    if state.get('order_info'):
+        sections.append(f"Order info:\n  {state['order_info']}")
+
+    context = '\n\n'.join(sections)
+
+    response = llm.invoke([
+        {'role': 'system', 'content': COMPILER_PROMPT},
+        {'role': 'system', 'content': f"Retrieved data:\n\n{context}"},
+        *state['messages']
+    ])
+
+    # Clear all info fields after compiling
+    return {
+        'messages': [{'role': 'assistant', 'content': response.content}],
+        'part_info': None,
+        'model_info': None,
+        'repair_info': None,
+        'order_info': None,
+    }
 
 
 graph_builder = StateGraph(State)
@@ -162,8 +194,11 @@ graph_builder.add_node('get_part_info', get_part_info)
 graph_builder.add_node('get_model_info', get_model_info)
 graph_builder.add_node('get_repair_info', get_repair_info)
 graph_builder.add_node('get_order_info', get_order_info)
+graph_builder.add_node('compiler_node', compiler_node)
 
 graph_builder.add_edge(START, 'cooper_node')
+# Empty intent: Cooper already replied (chat/out-of-scope) — go straight to END
+# Non-empty list: fan out to all matched specialist nodes
 graph_builder.add_conditional_edges(
     'cooper_node',
     lambda state: state['intent'] if state['intent'] else 'done',
@@ -171,11 +206,12 @@ graph_builder.add_conditional_edges(
      'repair_lookup': 'get_repair_info', 'order_lookup': 'get_order_info', 'done': END}
 )
 
-# All specialist nodes return to cooper_node — it detects the AI response and exits cleanly
-graph_builder.add_edge('get_part_info', 'cooper_node')
-graph_builder.add_edge('get_model_info', 'cooper_node')
-graph_builder.add_edge('get_repair_info', 'cooper_node')
-graph_builder.add_edge('get_order_info', 'cooper_node')
+# All specialist nodes feed into the compiler, which synthesises and ends the turn
+graph_builder.add_edge('get_part_info', 'compiler_node')
+graph_builder.add_edge('get_model_info', 'compiler_node')
+graph_builder.add_edge('get_repair_info', 'compiler_node')
+graph_builder.add_edge('get_order_info', 'compiler_node')
+graph_builder.add_edge('compiler_node', END)
 
 checkpointer = InMemorySaver()
 graph = graph_builder.compile(checkpointer=checkpointer)
