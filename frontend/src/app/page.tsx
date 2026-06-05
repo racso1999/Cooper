@@ -90,22 +90,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-[#121212]">
-      <header className="bg-[#2a2a2a] px-6 py-4">
-        <div className="flex items-center gap-3">
-          <svg viewBox="0 0 36 36" width="36" height="36" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18 2 L36 16 L31 16 L31 34 L5 34 L5 16 L0 16 Z" fill="#E8981A" />
-            <text x="18" y="29" textAnchor="middle" fill="white" fontWeight="bold" fontSize="15" fontFamily="Arial, sans-serif">P</text>
-          </svg>
-          <div>
-            <div className="text-white text-xl font-bold leading-none">PartSelect</div>
-            <div className="bg-[#265A5B] text-white text-[10px] font-medium px-1.5 py-0.5 mt-1 inline-block">
-              Here to help since 1999
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5">
+<div className="flex-1 overflow-y-auto px-4 py-6 space-y-5">
         {messages.length === 0 && (
           <div className="flex flex-col items-center mt-20 gap-4">
             <CooperAvatar size={96} />
