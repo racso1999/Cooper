@@ -1,9 +1,11 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = str(Path(__file__).parent / 'orders.db')
+DB_PATH = str(Path(__file__).parent / 'orders.db') 
 
-SCHEMA = """
+
+# This file seeds the SQLite database with sample orders data for testing and development.
+SCHEMA = """ 
 CREATE TABLE IF NOT EXISTS orders (
     order_id        TEXT PRIMARY KEY,
     customer_email  TEXT NOT NULL,
@@ -119,6 +121,7 @@ ORDERS = [
 ]
 
 
+#Fill the database with the above sample orders data.
 def seed():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
@@ -138,22 +141,6 @@ def seed():
             )
 
     conn.commit()
-
-    # Print a summary
-    rows = conn.execute("""
-        SELECT o.order_id, o.customer_name, o.status, o.total_amount,
-               GROUP_CONCAT(i.product_id, ', ') AS products
-        FROM orders o
-        JOIN order_items i ON i.order_id = o.order_id
-        GROUP BY o.order_id
-        ORDER BY o.order_date
-    """).fetchall()
-
-    print(f"{'Order':<12} {'Customer':<22} {'Status':<12} {'Total':>8}  Products")
-    print("-" * 80)
-    for r in rows:
-        print(f"{r[0]:<12} {r[1]:<22} {r[2]:<12} ${r[3]:>7.2f}  {r[4]}")
-
     conn.close()
 
 
