@@ -11,8 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import sqlite3
+
 from part_lookup import get_part_info as fetch_part_info
 from model_lookup import get_model_info as fetch_model_info
+
+DB_PATH = Path(__file__).parent / 'orders.db'
 
 
 llm = init_chat_model('gpt-5.4-2026-03-05')
@@ -33,6 +37,8 @@ class CooperOutput(BaseModel):
     )
     part_number: str | None = Field(default=None, description="Part number extracted from the conversation. Required when part_lookup is in intent.")
     model_number: str | None = Field(default=None, description="Appliance model number extracted from the conversation. Required when model_lookup is in intent.")
+    order_id: str | None = Field(default=None, description="Order ID extracted from the conversation (e.g. ORD-10042). Required when order_lookup is in intent.")
+    order_email: str | None = Field(default=None, description="Customer email extracted from the conversation. Required when order_lookup is in intent.")
 
 
 class State(TypedDict):
@@ -40,6 +46,8 @@ class State(TypedDict):
     intent: list[str] | None
     part_number: str | None
     model_number: str | None
+    order_id: str | None
+    order_email: str | None
     # Raw data set by specialist nodes, read and cleared by cooper_compiler
     part_info: dict | None
     model_info: dict | None
@@ -59,11 +67,13 @@ def cooper_node(state: State):
 
     intent = list(result.intent)
 
-    # Guard: strip lookup intents if the required identifier wasn't extracted
+    # Guard: strip lookup intents if required identifiers weren't extracted
     if 'part_lookup' in intent and not result.part_number:
         intent.remove('part_lookup')
     if 'model_lookup' in intent and not result.model_number:
         intent.remove('model_lookup')
+    if 'order_lookup' in intent and not (result.order_id and result.order_email):
+        intent.remove('order_lookup')
 
     updates: dict = {'intent': intent}
 
@@ -73,6 +83,10 @@ def cooper_node(state: State):
         updates['part_number'] = result.part_number
     if result.model_number:
         updates['model_number'] = result.model_number
+    if result.order_id:
+        updates['order_id'] = result.order_id
+    if result.order_email:
+        updates['order_email'] = result.order_email
 
     return updates
 
@@ -125,8 +139,31 @@ def get_repair_info(state: State):
 
 
 def get_order_info(state: State):
-    # TODO: implement order lookup
-    return {'order_info': 'ORDER LOOKUP (stub)'}
+    # Both fields required — UPPER/LOWER for case-insensitive matching, prevents data leaks
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("""
+        SELECT o.order_id, o.customer_name, o.order_date, o.status, o.total_amount,
+               GROUP_CONCAT(i.product_id || ' - ' || i.product_name || ' (x' || i.quantity || ')', '; ') AS items
+        FROM orders o
+        JOIN order_items i ON i.order_id = o.order_id
+        WHERE UPPER(o.order_id)       = UPPER(?)
+          AND LOWER(o.customer_email) = LOWER(?)
+        GROUP BY o.order_id
+    """, (state.get('order_id', '').strip(), state.get('order_email', '').strip())).fetchone()
+    conn.close()
+
+    if not row:
+        return {'order_info': "No order found matching that order ID and email. Please check both and try again."}
+
+    return {'order_info': (
+        f"Order ID: {row['order_id']}\n"
+        f"Customer: {row['customer_name']}\n"
+        f"Date: {row['order_date']}\n"
+        f"Status: {row['status']}\n"
+        f"Total: ${row['total_amount']:.2f}\n"
+        f"Items: {row['items']}"
+    )}
 
 
 def cooper_compiler(state: State):
@@ -167,7 +204,7 @@ def cooper_compiler(state: State):
         sections.append(f"Repair info:\n  {state['repair_info']}")
 
     if state.get('order_info'):
-        sections.append(f"Order info:\n  {state['order_info']}")
+        sections.append(f"Order lookup result:\n{state['order_info']}")
 
     context = '\n\n'.join(sections)
 
