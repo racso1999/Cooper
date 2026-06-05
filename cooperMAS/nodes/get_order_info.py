@@ -3,7 +3,7 @@ import sqlite3
 from .config import _fired, DB_PATH
 from .state import State
 
-
+# This node performs an order lookup based on the extracted order ID and email from the user's query.
 def get_order_info(state: State):
     if not _fired:
         print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)

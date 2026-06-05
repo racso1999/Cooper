@@ -10,8 +10,7 @@ from langchain_openai import OpenAIEmbeddings
 BASE    = Path(__file__).parent.parent   # system/
 DB_PATH = BASE / 'orders.db'
 
-# ── Models ────────────────────────────────────────────────────────────────────
-# Note: compiler uses OpenAI — Gemini does not stream tokens via LangChain
+#seledt models
 COOPER_NODE_MODEL     = 'google_genai:gemini-3.5-flash'
 COOPER_COMPILER_MODEL = 'gpt-4o-mini'                    # must stream
 COOPER_RAG_MODEL      = 'google_genai:gemini-3.5-flash'
@@ -20,19 +19,19 @@ cooper_llm   = init_chat_model(COOPER_NODE_MODEL)
 compiler_llm = init_chat_model(COOPER_COMPILER_MODEL)
 rag_llm      = init_chat_model(COOPER_RAG_MODEL)
 
-# ── Prompts ───────────────────────────────────────────────────────────────────
+#prompts
 def _load_prompt(filename: str) -> str:
     return (BASE / 'prompts' / filename).read_text(encoding='utf-8').strip()
 
 COOPER_SYSTEM_PROMPT   = _load_prompt('cooper_system.md')
 COOPER_COMPILER_PROMPT = _load_prompt('cooper_compiler.md')
 
-# ── Vectorstore ───────────────────────────────────────────────────────────────
+#vectorstore for RAG
 KNOWLEDGE_BASE = (BASE / 'repair_info.txt').read_text().splitlines()
 vectorstore    = InMemoryVectorStore(embedding=OpenAIEmbeddings(model='text-embedding-3-small'))
 vectorstore.add_documents([Document(page_content=text) for text in KNOWLEDGE_BASE])
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
+# Utility to extract text content from LLM responses, handling different provider formats (string vs list of blocks).
 def _text(response) -> str:
     """Extract plain text regardless of provider format.
     OpenAI: content is a string. Gemini: content is a list of typed blocks."""
@@ -45,6 +44,6 @@ def _text(response) -> str:
         if not isinstance(block, dict) or block.get('type') == 'text'
     )
 
-# ── Turn tracking ─────────────────────────────────────────────────────────────
+#Turn tracking
 # Cleared before each graph.invoke(); appended to by specialist nodes
 _fired: list[str] = []

@@ -1,7 +1,7 @@
 from .config import _text, compiler_llm, COOPER_COMPILER_PROMPT
 from .state import State
 
-
+# This node compiles the final response to the user, based on retrieved data and the conversation history.
 def cooper_compiler(state: State):
     sections = []
 

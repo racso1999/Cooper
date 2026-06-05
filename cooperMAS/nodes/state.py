@@ -5,8 +5,8 @@ from typing import TypedDict, Literal, Annotated
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-
-class CooperOutput(BaseModel):
+# Output schema for the CooperOutput node, which is the final node in the graph that produces a response to the user.
+class CooperOutput(BaseModel): 
     reply: str | None = Field(
         description="Cooper's response. Null when routing to specialist nodes.")
     intent: list[Literal['part_lookup', 'model_lookup', 'repair_lookup', 'order_lookup']] = Field(
@@ -20,7 +20,7 @@ class CooperOutput(BaseModel):
     order_email: str | None = Field(default=None,
         description="Customer email. Required when order_lookup is in intent.")
 
-
+# This TypedDict defines the state that is passed between nodes in the graph. It includes the conversation history (messages), the extracted intent and parameters, and any retrieved information from specialist nodes.
 class State(TypedDict):
     messages:     Annotated[list, add_messages]
     intent:       list[str] | None

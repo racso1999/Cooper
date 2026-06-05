@@ -6,7 +6,7 @@ from model_lookup import get_model_info as fetch_model_info
 from .config import _fired
 from .state import State
 
-
+# This node performs a model lookup based on the extracted model number from the user's query.
 def get_model_info(state: State):
     if not _fired:
         print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)

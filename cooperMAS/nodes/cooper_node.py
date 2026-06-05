@@ -3,7 +3,9 @@ from .state import CooperOutput, State
 
 _cooper = cooper_llm.with_structured_output(CooperOutput)
 
-
+# This node is the entry point for the graph. It takes the conversation history as input,
+# and uses the Cooper LLM to extract the user's intent and any relevant parameters (part number, model number, order ID/email). 
+# It returns these as updates to the state, which will be used by downstream nodes to route to specialist lookups or compile a response.
 def cooper_node(state: State):
     result = _cooper.invoke([
         {'role': 'system', 'content': COOPER_SYSTEM_PROMPT},

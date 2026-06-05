@@ -1,7 +1,7 @@
 from .config import _fired, _text, rag_llm, vectorstore
 from .state import State
 
-
+# This node performs a RAG-based lookup to retrieve repair information relevant to the user's query.
 def get_repair_info(state: State):
     if not _fired:
         print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
