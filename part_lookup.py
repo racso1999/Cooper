@@ -60,7 +60,7 @@ def get_part_info(part_number: str) -> dict | None:
     # --- Price ---
     # Product page uses span.js-partPrice; search results page uses div.bold.info-item.price
     price_tag = soup.find("span", class_="js-partPrice") or \
-                soup.find("div", class_=lambda c: c and "bold" in c and "price" in c and "info-item" in c) # type: ignore
+                soup.find("div", class_=lambda c: c and "bold" in c and "price" in c and "info-item" in c)
     raw_price = price_tag.get_text(strip=True).lstrip("$") if price_tag else None
     price = f"${raw_price}" if raw_price else None
 
