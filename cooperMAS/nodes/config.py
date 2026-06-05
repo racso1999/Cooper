@@ -26,10 +26,12 @@ def _load_prompt(filename: str) -> str:
 COOPER_SYSTEM_PROMPT   = _load_prompt('cooper_system.md')
 COOPER_COMPILER_PROMPT = _load_prompt('cooper_compiler.md')
 
-#vectorstore for RAG
-KNOWLEDGE_BASE = (BASE / 'repair_info.txt').read_text().splitlines()
+#vectorstore for RAG — chunked by #### subsection so each document is a complete repair procedure
+import re as _re
+_raw = (BASE / 'repair_info.txt').read_text()
+KNOWLEDGE_BASE = [c.strip() for c in _re.split(r'\n(?=####)', _raw) if len(c.strip()) > 80]
 vectorstore    = InMemoryVectorStore(embedding=OpenAIEmbeddings(model='text-embedding-3-small'))
-vectorstore.add_documents([Document(page_content=text) for text in KNOWLEDGE_BASE])
+vectorstore.add_documents([Document(page_content=chunk) for chunk in KNOWLEDGE_BASE])
 
 # Utility to extract text content from LLM responses, handling different provider formats (string vs list of blocks).
 def _text(response) -> str:
