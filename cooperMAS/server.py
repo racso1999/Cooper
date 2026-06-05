@@ -1,4 +1,5 @@
 import sys
+import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -7,6 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from graph import graph
@@ -23,25 +25,36 @@ app.add_middleware(
 )
 
 
-# API endpoint for chat interactions. Expects a message and thread_id, invokes the graph, and returns the LLM's reply.
-class ChatRequest(BaseModel): 
+class ChatRequest(BaseModel):
     message: str
     thread_id: str
 
-class ChatResponse(BaseModel):
-    reply: str
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    _fired.clear()
-    config = {"configurable": {"thread_id": req.thread_id}}
-    result = graph.invoke(
-        {"messages": [{"role": "user", "content": req.message}]},
-        config=config,
-    )
-    last_human = max(i for i, m in enumerate(result["messages"]) if m.type == "human")
-    reply = next(
-        (m.content for m in reversed(result["messages"][last_human + 1:]) if m.type == "ai"),
-        "",
-    )
-    return ChatResponse(reply=reply)
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    async def event_stream():
+        _fired.clear()
+        config = {"configurable": {"thread_id": req.thread_id}}
+
+        async for chunk in graph.astream(
+            {"messages": [{"role": "user", "content": req.message}]},
+            config=config,
+        ):
+            if "cooper_node" in chunk:
+                intent = chunk["cooper_node"].get("intent") or []
+                messages = chunk["cooper_node"].get("messages") or []
+                if intent:
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Fetching some more information, hold tight...'})}\n\n"
+                elif messages:
+                    msg = messages[-1]
+                    content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+                    yield f"data: {json.dumps({'type': 'reply', 'message': content})}\n\n"
+
+            elif "compiler_node" in chunk:
+                messages = chunk["compiler_node"].get("messages") or []
+                if messages:
+                    msg = messages[-1]
+                    content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+                    yield f"data: {json.dumps({'type': 'reply', 'message': content})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
