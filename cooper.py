@@ -29,7 +29,14 @@ vectorstore.add_documents([Document(page_content=text) for text in KNOWLEDGE_BAS
 DB_PATH = Path(__file__).parent / 'orders.db'
 
 
-llm = init_chat_model('gpt-5.4-2026-03-05')
+# Each node uses its own model — tune cost vs capability independently
+COOPER_NODE_MODEL    = 'gpt-5.4-2026-03-05'   # main routing brain — most capable
+COOPER_COMPILER_MODEL = 'gpt-5.4-2026-03-05'  # response synthesis
+COOPER_RAG_MODEL     = 'gpt-4o-mini'           # RAG synthesis — simpler task, cheaper
+
+cooper_llm   = init_chat_model(COOPER_NODE_MODEL)
+compiler_llm = init_chat_model(COOPER_COMPILER_MODEL)
+rag_llm      = init_chat_model(COOPER_RAG_MODEL)
 
 
 def _load_prompt(filename: str) -> str:
@@ -65,8 +72,8 @@ class State(TypedDict):
     order_info: str | None
 
 
-# Cached structured-output chain
-_cooper = llm.with_structured_output(CooperOutput)
+# Cached structured-output chain — uses cooper_llm
+_cooper = cooper_llm.with_structured_output(CooperOutput)
 
 
 def cooper_node(state: State):
@@ -153,7 +160,7 @@ def get_repair_info(state: State):
         {'role': 'system', 'content': f'You are a RAG agent. Answer the user using only the context below. If the answer is not in it, say you don\'t know.\n\nContext:\n{context}'},
     ] + state['messages']
 
-    response = llm.invoke(messages)
+    response = rag_llm.invoke(messages)
 
     return {'repair_info': response.content}
 
@@ -228,7 +235,7 @@ def cooper_compiler(state: State):
 
     context = '\n\n'.join(sections)
 
-    response = llm.invoke([
+    response = compiler_llm.invoke([
         {'role': 'system', 'content': COOPER_COMPILER_PROMPT},
         {'role': 'system', 'content': f"Retrieved data:\n\n{context}"},
         *state['messages']
