@@ -1,11 +1,14 @@
 from langgraph.graph import END, START, StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import add_messages
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, Field
 from typing import TypedDict, Literal, Annotated
 import uuid
 from pathlib import Path
-
+ 
 from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
 
@@ -15,6 +18,13 @@ import sqlite3
 
 from part_lookup import get_part_info as fetch_part_info
 from model_lookup import get_model_info as fetch_model_info
+
+KNOWLEDGE_BASE = (Path(__file__).parent / 'repair_info.txt').read_text().splitlines()
+vectorstore = InMemoryVectorStore(embedding=OpenAIEmbeddings(model='text-embedding-3-small'))
+vectorstore.add_documents([Document(page_content=text) for text in KNOWLEDGE_BASE])
+
+
+
 
 DB_PATH = Path(__file__).parent / 'orders.db'
 
@@ -134,8 +144,18 @@ def get_model_info(state: State):
 
 
 def get_repair_info(state: State):
-    # TODO: implement repair RAG
-    return {'repair_info': 'REPAIR RAG (stub)'}
+    query = state['messages'][-1].content
+    documents = vectorstore.similarity_search(query, k=3)
+
+    context = '\n'.join(f'- {doc.page_content}' for doc in documents)
+
+    messages = [
+        {'role': 'system', 'content': f'You are a RAG agent. Answer the user using only the context below. If the answer is not in it, say you don\'t know.\n\nContext:\n{context}'},
+    ] + state['messages']
+
+    response = llm.invoke(messages)
+
+    return {'repair_info': response.content}
 
 
 def get_order_info(state: State):
