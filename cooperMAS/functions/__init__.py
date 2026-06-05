@@ -1,4 +1,4 @@
-"""functions package — exports everything graph.py and cooper.py need."""
+#import components to be used in the system
 
 from .state import State, CooperOutput
 from .context import _fired

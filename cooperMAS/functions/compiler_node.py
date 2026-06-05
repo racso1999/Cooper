@@ -3,6 +3,7 @@ from .config import compiler_llm
 from .prompts import COOPER_COMPILER_PROMPT
 from .state import State
 
+# This node compiles all retrieved information and the conversation history into a final response to the user.
 
 def compiler_node(state: State):
     sections = []
