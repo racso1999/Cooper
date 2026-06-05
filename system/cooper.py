@@ -1,14 +1,3 @@
-"""
-cooper.py — Entry point for the Cooper PartSelect agent.
-
-Run:  python3 cooper.py
-
-Architecture:
-  nodes.py   — state, models, prompts, all node functions
-  graph.py   — assembles and compiles the LangGraph graph
-  cooper.py  — loads the graph, draws the diagram, runs the conversation loop
-"""
-
 import uuid
 from pathlib import Path
 
@@ -17,8 +6,6 @@ load_dotenv()
 
 from graph import graph
 from nodes import _fired
-
-graph.get_graph().draw_mermaid_png(output_file_path=str(Path(__file__).parent.parent / 'graph.png'))
 
 config = {'configurable': {'thread_id': uuid.uuid4()}}
 
