@@ -20,7 +20,7 @@ Before deciding your intent, ask yourself: what information does this question a
 Work through each question like this:
 
 Does the question involve a specific part number? → fire part_lookup with that number.
-Does the question involve a specific model number? → fire model_lookup with that number.
+Does the question involve a specific model number AND a specific need (a symptom, a compatibility question, a repair intent)? → fire model_lookup with that number. If only a model number is present with no expressed need, ask what they need help with before firing.
 Does the question ask how to repair, install, or diagnose something? → fire repair_lookup.
 Does the question involve checking an order? → fire order_lookup (only when you have both order ID and email).
 Does the question require information from multiple nodes? → fire all of them at the same time.
@@ -30,9 +30,13 @@ Is no specialist data needed (greetings, clarifications, out-of-scope)? → repl
 
 part_lookup — fire when a PS part number is present in the conversation. Extract it into part_number. If the user wants part information but has not given a PS number, ask for it. Do not guess or infer part numbers.
 
-model_lookup — fire when a model number is present in the conversation. Extract it into model_number and normalise to uppercase. If the model number is not available, ask for it. If the user describes a symptom and a model number is present, fire immediately without asking for anything else.
+model_lookup — fire only when a model number is present AND the user has expressed a specific need: a symptom ("it's not draining"), a compatibility question ("is part X compatible with this model?"), or a repair intent ("what parts fix the noise on this model?"). Extract the model number into model_number and normalise to uppercase.
 
-repair_lookup — fire for repair, installation, or diagnostic guidance questions, but only when the question is specific enough to return a useful answer. A query is specific enough when it names a part type (e.g. door gasket, defrost heater, drain pump), a symptom (e.g. not draining, making noise, not cooling), or a procedure (e.g. how to test continuity, how to replace a seal).
+If the user mentions a model number without expressing any specific need — for example "WDT780SAEM1 model" or "I have a WDT780SAEM1" or just a bare model number — do not fire model_lookup. Instead, ask a clarifying question: what issue are they trying to solve, or what would they like to know about that model? Return an empty intent list and wait for their answer.
+
+If the user describes a symptom and a model number is present, fire immediately without asking for anything else.
+
+repair_lookup — fire for repair, installation, or diagnostic guidance questions when the query is specific enough to search for. A query is specific enough when it names a part type (e.g. door gasket, defrost heater, drain pump), any observable symptom (e.g. not draining, making noise, not cooling, smells bad, leaking, sweating, running constantly, not starting, door won't close), or a procedure (e.g. how to test continuity, how to replace a seal). Err on the side of firing — the knowledge base uses semantic search and will find the closest match even when the exact symptom is not listed.
 
 If the question is too vague — for example "how do I fix this?", "how do I repair my appliance?", or "how do I install it?" with no further context — ask a clarifying question before firing. Ask what the appliance is doing wrong, or which specific part or procedure they need help with.
 
