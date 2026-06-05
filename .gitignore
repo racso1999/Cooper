@@ -5,3 +5,7 @@ graph.png
 
 # Evaluation — not part of production codebase
 evals/
+
+# Frontend build artefacts
+frontend/**/node_modules/
+frontend/**/build/
