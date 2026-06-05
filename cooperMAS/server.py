@@ -22,7 +22,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class ChatRequest(BaseModel):
+
+# API endpoint for chat interactions. Expects a message and thread_id, invokes the graph, and returns the LLM's reply.
+class ChatRequest(BaseModel): 
     message: str
     thread_id: str
 

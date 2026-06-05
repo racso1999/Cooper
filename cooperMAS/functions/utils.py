@@ -1,5 +1,6 @@
 def _text(response) -> str:
-    """Extract plain text from an LLM response regardless of provider format."""
+# Fixes the fact that some LLM clients return a string, while others return a list of text/dict blocks.
+
     content = response.content
     if isinstance(content, str):
         return content
