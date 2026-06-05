@@ -33,6 +33,23 @@ function CooperAvatar({ size = 36 }: { size?: number }) {
   );
 }
 
+const IMAGE_URL_RE = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|webp|gif)(?:[?#][^\s]*)?)/gi;
+
+function renderMessage(content: string) {
+  const parts = content.split(IMAGE_URL_RE);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^https?:\/\/[^\s]+\.(?:jpg|jpeg|png|webp|gif)/i.test(part) ? (
+          <img key={i} src={part} alt="" className="max-w-[200px] rounded-lg mt-2 block" />
+        ) : (
+          <span key={i} className="whitespace-pre-wrap">{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -108,8 +125,8 @@ export default function Home() {
                 <CooperAvatar />
                 <span className="text-[#E8981A] font-bold text-sm">Cooper</span>
               </div>
-              <p className="text-[#cccccc] text-sm whitespace-pre-wrap leading-relaxed">
-                {m.content}
+              <p className="text-[#cccccc] text-sm leading-relaxed">
+                {renderMessage(m.content)}
               </p>
             </div>
           )
