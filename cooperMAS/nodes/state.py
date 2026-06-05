@@ -23,6 +23,7 @@ class CooperOutput(BaseModel):
 # This TypedDict defines the state that is passed between nodes in the graph. It includes the conversation history (messages), the extracted intent and parameters, and any retrieved information from specialist nodes.
 class State(TypedDict):
     messages:     Annotated[list, add_messages]
+    summary:      str | None   # rolling summary of messages older than the keep window
     intent:       list[str] | None
     part_number:  str | None
     model_number: str | None

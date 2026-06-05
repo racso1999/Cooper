@@ -14,18 +14,21 @@ from nodes import (
     get_repair_info,
     get_order_info,
     cooper_compiler,
+    maybe_summarize,
 )
 
 graph_builder = StateGraph(State)
 
-graph_builder.add_node('cooper_node',    cooper_node)
-graph_builder.add_node('get_part_info',  get_part_info)
-graph_builder.add_node('get_model_info', get_model_info)
-graph_builder.add_node('get_repair_info',get_repair_info)
-graph_builder.add_node('get_order_info', get_order_info)
-graph_builder.add_node('cooper_compiler',cooper_compiler)
+graph_builder.add_node('maybe_summarize', maybe_summarize)
+graph_builder.add_node('cooper_node',     cooper_node)
+graph_builder.add_node('get_part_info',   get_part_info)
+graph_builder.add_node('get_model_info',  get_model_info)
+graph_builder.add_node('get_repair_info', get_repair_info)
+graph_builder.add_node('get_order_info',  get_order_info)
+graph_builder.add_node('cooper_compiler', cooper_compiler)
 
-graph_builder.add_edge(START, 'cooper_node')
+graph_builder.add_edge(START,             'maybe_summarize')
+graph_builder.add_edge('maybe_summarize', 'cooper_node')
 
 # Empty intent → Cooper replied directly (chat/out-of-scope) → END
 # Non-empty list → fan out to all matched specialist nodes in parallel

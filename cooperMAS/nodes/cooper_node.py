@@ -7,8 +7,23 @@ _cooper = cooper_llm.with_structured_output(CooperOutput)
 # and uses the Cooper LLM to extract the user's intent and any relevant parameters (part number, model number, order ID/email).
 # It returns these as updates to the state, which will be used by downstream nodes to route to specialist lookups or compile a response.
 def cooper_node(state: State):
+    prefix = []
+
+    if state.get('summary'):
+        prefix.append({'role': 'system', 'content': f"Summary of earlier conversation:\n{state['summary']}"})
+
+    known = {k: v for k, v in {
+        'part_number':  state.get('part_number'),
+        'model_number': state.get('model_number'),
+        'order_id':     state.get('order_id'),
+        'order_email':  state.get('order_email'),
+    }.items() if v}
+    if known:
+        prefix.append({'role': 'system', 'content': 'Known entities from this session: ' + ', '.join(f'{k}={v}' for k, v in known.items())})
+
     result = _cooper.invoke([
         {'role': 'system', 'content': COOPER_SYSTEM_PROMPT},
+        *prefix,
         *state['messages']
     ])
 
