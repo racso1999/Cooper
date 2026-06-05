@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -10,12 +10,17 @@ export async function POST(req: NextRequest) {
   });
 
   if (!upstream.ok) {
-    return NextResponse.json(
-      { error: "Backend error" },
-      { status: upstream.status }
-    );
+    return new Response(JSON.stringify({ error: "Backend error" }), {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const data = await upstream.json();
-  return NextResponse.json(data);
+  return new Response(upstream.body, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
 }
