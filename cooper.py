@@ -22,8 +22,8 @@ def _load_prompt(filename: str) -> str:
     return (Path(__file__).parent / 'prompts' / filename).read_text(encoding='utf-8').strip()
 
 
-COOPER_SYSTEM_PROMPT = _load_prompt('cooper.md')
-COMPILER_PROMPT      = _load_prompt('compiler.md')
+COOPER_SYSTEM_PROMPT   = _load_prompt('cooper_system.md')
+COOPER_COOPER_COMPILER_PROMPT = _load_prompt('cooper_compiler.md')
 
 
 class CooperOutput(BaseModel):
@@ -40,7 +40,7 @@ class State(TypedDict):
     intent: list[str] | None
     part_number: str | None
     model_number: str | None
-    # Raw data set by specialist nodes, read and cleared by compiler_node
+    # Raw data set by specialist nodes, read and cleared by cooper_compiler
     part_info: dict | None
     model_info: dict | None
     repair_info: str | None
@@ -78,7 +78,7 @@ def cooper_node(state: State):
 
 
 def get_part_info(state: State):
-    # Fetch only — no LLM. Stores raw data for compiler_node to format.
+    # Fetch only — no LLM. Stores raw data for cooper_compiler to format.
     info = fetch_part_info(state.get('part_number'))
 
     if not info:
@@ -93,7 +93,7 @@ def get_part_info(state: State):
 
 
 def get_model_info(state: State):
-    # Fetch only — no LLM. Stores raw data for compiler_node to format.
+    # Fetch only — no LLM. Stores raw data for cooper_compiler to format.
     info = fetch_model_info(state.get('model_number'))
 
     if not info:
@@ -129,7 +129,7 @@ def get_order_info(state: State):
     return {'order_info': 'ORDER LOOKUP (stub)'}
 
 
-def compiler_node(state: State):
+def cooper_compiler(state: State):
     # Build a context block from whatever specialist nodes populated this turn
     sections = []
 
@@ -172,7 +172,7 @@ def compiler_node(state: State):
     context = '\n\n'.join(sections)
 
     response = llm.invoke([
-        {'role': 'system', 'content': COMPILER_PROMPT},
+        {'role': 'system', 'content': COOPER_COMPILER_PROMPT},
         {'role': 'system', 'content': f"Retrieved data:\n\n{context}"},
         *state['messages']
     ])
@@ -194,7 +194,7 @@ graph_builder.add_node('get_part_info', get_part_info)
 graph_builder.add_node('get_model_info', get_model_info)
 graph_builder.add_node('get_repair_info', get_repair_info)
 graph_builder.add_node('get_order_info', get_order_info)
-graph_builder.add_node('compiler_node', compiler_node)
+graph_builder.add_node('cooper_compiler', cooper_compiler)
 
 graph_builder.add_edge(START, 'cooper_node')
 # Empty intent: Cooper already replied (chat/out-of-scope) — go straight to END
@@ -207,11 +207,11 @@ graph_builder.add_conditional_edges(
 )
 
 # All specialist nodes feed into the compiler, which synthesises and ends the turn
-graph_builder.add_edge('get_part_info', 'compiler_node')
-graph_builder.add_edge('get_model_info', 'compiler_node')
-graph_builder.add_edge('get_repair_info', 'compiler_node')
-graph_builder.add_edge('get_order_info', 'compiler_node')
-graph_builder.add_edge('compiler_node', END)
+graph_builder.add_edge('get_part_info', 'cooper_compiler')
+graph_builder.add_edge('get_model_info', 'cooper_compiler')
+graph_builder.add_edge('get_repair_info', 'cooper_compiler')
+graph_builder.add_edge('get_order_info', 'cooper_compiler')
+graph_builder.add_edge('cooper_compiler', END)
 
 checkpointer = InMemorySaver()
 graph = graph_builder.compile(checkpointer=checkpointer)
