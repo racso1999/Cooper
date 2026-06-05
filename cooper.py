@@ -31,7 +31,7 @@ class CooperOutput(BaseModel):
     intent: list[Literal['part_lookup', 'model_lookup', 'repair_lookup', 'order_lookup']] = Field(
         description="Specialist nodes to call. Return an empty list when no node is needed (greetings, chat, out-of-scope). Return multiple to fan out in parallel."
     )
-    part_number: str | None = Field(default=None, description="PS part number extracted from the conversation. Required when part_lookup is in intent.")
+    part_number: str | None = Field(default=None, description="Part number extracted from the conversation. Required when part_lookup is in intent.")
     model_number: str | None = Field(default=None, description="Appliance model number extracted from the conversation. Required when model_lookup is in intent.")
 
 
