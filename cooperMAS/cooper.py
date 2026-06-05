@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from graph import graph
-from nodes import _fired
+from functions import _fired
 
 config = {'configurable': {'thread_id': uuid.uuid4()}}
 

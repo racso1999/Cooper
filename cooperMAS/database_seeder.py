@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = str(Path(__file__).parent / 'orders.db') 
+DB_PATH = Path(__file__).parent / 'data' / 'orders.db'
 
 
 # This file seeds the SQLite database with sample orders data for testing and development.

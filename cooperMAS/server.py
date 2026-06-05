@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from graph import graph
-from nodes import _fired
+from functions import _fired
+
 
 app = FastAPI()
 
