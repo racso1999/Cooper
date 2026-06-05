@@ -30,9 +30,11 @@ DB_PATH = Path(__file__).parent / 'orders.db'
 
 
 # Each node uses its own model — tune cost vs capability independently
-COOPER_NODE_MODEL    = 'gpt-5.4-2026-03-05'   # main routing brain — most capable
-COOPER_COMPILER_MODEL = 'gpt-5.4-2026-03-05'  # response synthesis
-COOPER_RAG_MODEL     = 'gpt-4o-mini'           # RAG synthesis — simpler task, cheaper
+# Prefix google_genai: routes to Gemini API (AI Studio); requires GOOGLE_API_KEY in .env
+# Note: compiler uses OpenAI — Gemini does not stream tokens via LangChain (returns one chunk)
+COOPER_NODE_MODEL     = 'google_genai:gemini-3.5-flash'  # main routing brain
+COOPER_COMPILER_MODEL = 'gpt-4o-mini'                          # response synthesis — must stream
+COOPER_RAG_MODEL      = 'google_genai:gemini-3.5-flash'  # RAG synthesis
 
 cooper_llm   = init_chat_model(COOPER_NODE_MODEL)
 compiler_llm = init_chat_model(COOPER_COMPILER_MODEL)
@@ -41,6 +43,19 @@ rag_llm      = init_chat_model(COOPER_RAG_MODEL)
 
 def _load_prompt(filename: str) -> str:
     return (Path(__file__).parent / 'prompts' / filename).read_text(encoding='utf-8').strip()
+
+
+def _text(response) -> str:
+    """Extract plain text from an LLM response regardless of provider format.
+    OpenAI returns response.content as a string; Gemini returns a list of content blocks."""
+    content = response.content
+    if isinstance(content, str):
+        return content
+    return ''.join(
+        block['text'] if isinstance(block, dict) else str(block)
+        for block in content
+        if not isinstance(block, dict) or block.get('type') == 'text'
+    )
 
 
 COOPER_SYSTEM_PROMPT   = _load_prompt('cooper_system.md')
@@ -52,10 +67,10 @@ class CooperOutput(BaseModel):
     intent: list[Literal['part_lookup', 'model_lookup', 'repair_lookup', 'order_lookup']] = Field(
         description="Specialist nodes to call. Return an empty list when no node is needed (greetings, chat, out-of-scope). Return multiple to fan out in parallel."
     )
-    part_number: str | None = Field(default=None, description="Part number extracted from the conversation. Required when part_lookup is in intent.")
-    model_number: str | None = Field(default=None, description="Appliance model number extracted from the conversation. Required when model_lookup is in intent.")
-    order_id: str | None = Field(default=None, description="Order ID extracted from the conversation (e.g. ORD-10042). Required when order_lookup is in intent.")
-    order_email: str | None = Field(default=None, description="Customer email extracted from the conversation. Required when order_lookup is in intent.")
+    part_number: str | None = Field(default=None, description="PS part number extracted from the conversation (e.g. PS11752778). Required when part_lookup is in intent.")
+    model_number: str | None = Field(default=None, description="Appliance model number extracted from the conversation (e.g. WDT780SAEM1). Always normalise to uppercase — if the user writes 'wdt780saem1', return 'WDT780SAEM1'. Required when model_lookup is in intent.")
+    order_id: str | None = Field(default=None, description="Order ID extracted from the conversation (e.g. ORD-10042). Extract even when the user provides it as raw data without explicit phrasing. Required when order_lookup is in intent.")
+    order_email: str | None = Field(default=None, description="Customer email extracted from the conversation. Extract even when given inline without preamble. Required when order_lookup is in intent.")
 
 
 class State(TypedDict):
@@ -74,6 +89,9 @@ class State(TypedDict):
 
 # Cached structured-output chain — uses cooper_llm
 _cooper = cooper_llm.with_structured_output(CooperOutput)
+
+# Tracks which specialist nodes fired in the current turn — printed before the response
+_fired: list[str] = []
 
 
 def cooper_node(state: State):
@@ -109,7 +127,9 @@ def cooper_node(state: State):
 
 
 def get_part_info(state: State):
-    # Fetch only — no LLM. Stores raw data for cooper_compiler to format.
+    if not _fired:
+        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    _fired.append('[PART]')
     info = fetch_part_info(state.get('part_number'))
 
     if not info:
@@ -124,7 +144,9 @@ def get_part_info(state: State):
 
 
 def get_model_info(state: State):
-    # Fetch only — no LLM. Stores raw data for cooper_compiler to format.
+    if not _fired:
+        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    _fired.append('[MODEL]')
     info = fetch_model_info(state.get('model_number'))
 
     if not info:
@@ -151,6 +173,9 @@ def get_model_info(state: State):
 
 
 def get_repair_info(state: State):
+    if not _fired:
+        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    _fired.append('[RAG]')
     query = state['messages'][-1].content
     documents = vectorstore.similarity_search(query, k=3)
 
@@ -162,10 +187,13 @@ def get_repair_info(state: State):
 
     response = rag_llm.invoke(messages)
 
-    return {'repair_info': response.content}
+    return {'repair_info': _text(response)}
 
 
 def get_order_info(state: State):
+    if not _fired:
+        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    _fired.append('[ORDER]')
     # Both fields required — UPPER/LOWER for case-insensitive matching, prevents data leaks
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -235,15 +263,22 @@ def cooper_compiler(state: State):
 
     context = '\n\n'.join(sections)
 
-    response = compiler_llm.invoke([
+    # Stream tokens directly to the terminal as they arrive
+    full_response = ''
+    for chunk in compiler_llm.stream([
         {'role': 'system', 'content': COOPER_COMPILER_PROMPT},
         {'role': 'system', 'content': f"Retrieved data:\n\n{context}"},
         *state['messages']
-    ])
+    ]):
+        text = _text(chunk)
+        if text:
+            print(text, end='', flush=True)
+            full_response += text
+    print()  # newline after stream ends
 
     # Clear all info fields after compiling
     return {
-        'messages': [{'role': 'assistant', 'content': response.content}],
+        'messages': [{'role': 'assistant', 'content': full_response}],
         'part_info': None,
         'model_info': None,
         'repair_info': None,
@@ -285,10 +320,14 @@ graph.get_graph().draw_mermaid_png(output_file_path='graph.png')
 config = {'configurable': {'thread_id': uuid.uuid4()}}
 
 while True:
-    user_input = input("Enter your query: ")
+    user_input = input("> ")
+    _fired.clear()
     result = graph.invoke({'messages': [{'role': 'user', 'content': user_input}]}, config=config)
 
-    last_human = max(i for i, m in enumerate(result['messages']) if m.type == 'human')
-    for msg in result['messages'][last_human + 1:]:
-        if msg.type == 'ai':
-            print(msg.content)
+    # Agent path: compiler already printed tags and streamed the response — nothing to do.
+    # Chat path: cooper_node replied directly (no nodes fired) — print it now.
+    if not _fired:
+        last_human = max(i for i, m in enumerate(result['messages']) if m.type == 'human')
+        for msg in result['messages'][last_human + 1:]:
+            if msg.type == 'ai':
+                print(msg.content)
