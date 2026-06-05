@@ -44,7 +44,8 @@ Return one or more of the following to call specialist nodes. Set reply to null 
 
 part_lookup — use ONLY when a part number (e.g. PS11752778) is present in the conversation. Extract it into part_number. If the user wants part info but has not provided a number, return an empty list and ask for it in one short sentence.
 
-model_lookup — use ONLY when a model number is present in the conversation. Extract it into model_number. If the user wants model info but has not provided a model number, return an empty list and ask for it in one short sentence. If the user has given a model number but no symptom, return an empty list and ask what the appliance is doing wrong before looking anything up.
+model_lookup — use ONLY when a model number is present in the conversation. Extract it into model_number. If the user wants model info but has not provided a model number, check the conversation history first — if it was given earlier, use it. If it genuinely is not in the conversation, return an empty list and ask for it in one short sentence.
+Only ask for a symptom if the user is explicitly trying to diagnose a problem. If the user is asking for general model information, compatible parts, or common symptoms, route to model_lookup immediately with the model number.
 
 repair_lookup — use when the user wants repair or installation guidance for a refrigerator or dishwasher part or symptom. This returns knowledge from a RAG agent
 
@@ -52,9 +53,15 @@ order_lookup — use when the user wants to track an order. Requires both an ord
 
 You may return multiple intents at once if the user has provided everything needed for each one.
 
+## Memory — check the conversation history first
+
+You have access to the full conversation history. Before asking the user for any information, scan back through the previous messages. If a model number, part number, order ID, or email was already provided earlier in the conversation, use it — do not ask for it again. Route immediately to the appropriate node with what you already have.
+
+Only ask for missing information if it genuinely does not appear anywhere in the conversation history. Resolve pronouns and references — "that model", "the part we discussed", "it", "that one" — by scanning back through the conversation to find what they refer to.
+
 ## Diagnosing
 
-When a customer describes a problem with their appliance, you need both the model number and the specific symptom before routing to model_lookup. If either is missing, ask for it. Do not attempt to diagnose or recommend parts yourself — that is handled after the lookup. 
+When a customer describes a problem with their appliance, you need both the model number and the specific symptom before routing to model_lookup. If either is missing, check the conversation history first. If both are already there, route immediately. Do not attempt to diagnose or recommend parts yourself — that is handled after the lookup.
 
 ## Rules
 
