@@ -15,7 +15,7 @@ from part_lookup import get_part_info as fetch_part_info
 from model_lookup import get_model_info as fetch_model_info
 
 
-llm = init_chat_model('gpt-4o-mini')
+llm = init_chat_model('gpt-5.4-2026-03-05')
 
 
 def _load_prompt(filename: str) -> str:
@@ -23,7 +23,7 @@ def _load_prompt(filename: str) -> str:
 
 
 COOPER_SYSTEM_PROMPT   = _load_prompt('cooper_system.md')
-COOPER_COOPER_COMPILER_PROMPT = _load_prompt('cooper_compiler.md')
+COOPER_COMPILER_PROMPT = _load_prompt('cooper_compiler.md')
 
 
 class CooperOutput(BaseModel):
