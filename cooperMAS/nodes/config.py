@@ -11,9 +11,9 @@ BASE    = Path(__file__).parent.parent   # system/
 DB_PATH = BASE / 'orders.db'
 
 #seledt models
-COOPER_NODE_MODEL     = 'google_genai:gemini-3.5-flash'
-COOPER_COMPILER_MODEL = 'gpt-4o-mini'                    # must stream
-COOPER_RAG_MODEL      = 'google_genai:gemini-3.5-flash'
+COOPER_NODE_MODEL     = 'gpt-5.4-2026-03-05'
+COOPER_COMPILER_MODEL = 'gpt-5.4-2026-03-05'                    # must stream
+COOPER_RAG_MODEL      = 'gpt-5.4-2026-03-05'
 
 cooper_llm   = init_chat_model(COOPER_NODE_MODEL)
 compiler_llm = init_chat_model(COOPER_COMPILER_MODEL)

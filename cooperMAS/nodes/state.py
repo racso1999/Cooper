@@ -6,7 +6,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 # Output schema for the CooperOutput node, which is the final node in the graph that produces a response to the user.
-class CooperOutput(BaseModel): 
+class CooperOutput(BaseModel):
     reply: str | None = Field(
         description="Cooper's response. Null when routing to specialist nodes.")
     intent: list[Literal['part_lookup', 'model_lookup', 'repair_lookup', 'order_lookup']] = Field(

@@ -1,6 +1,7 @@
 import re
 import time
 from curl_cffi import requests as cf_requests
+from curl_cffi.requests.exceptions import Timeout
 from bs4 import BeautifulSoup
 
 # Set your model number here
@@ -37,7 +38,10 @@ def get_model_info(model_number: str) -> dict | None:
     # Fetch each symptom page and merge parts by part number so each part ends up tagged with every symptom it fixes.
     parts_map = {}
     for symptom, sym_url in symptom_links.items():
-        sym_r = session.get(sym_url, timeout=15)
+        try:
+            sym_r = session.get(sym_url, timeout=15)
+        except Timeout:
+            continue
         if sym_r.status_code != 200:
             continue
 
@@ -60,7 +64,7 @@ def get_model_info(model_number: str) -> dict | None:
                 parts_map[part_number] = {"name": part_name, "fix_rates": {}}
             parts_map[part_number]["fix_rates"][symptom] = fix_rate
 
-        time.sleep(0.3)
+        time.sleep(1.0)
 
     compatible_parts = [
         {"part_number": pn, "name": data["name"], "fixes": data["fix_rates"]}
