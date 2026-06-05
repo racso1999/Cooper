@@ -6,7 +6,7 @@ from part_lookup import get_part_info as fetch_part_info
 from .config import _fired
 from .state import State
 
-
+# This node performs a part lookup based on the extracted part number from the user's query.
 def get_part_info(state: State):
     if not _fired:
         print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
