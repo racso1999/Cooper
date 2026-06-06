@@ -1,5 +1,3 @@
-"""graph.py — Assembles and compiles the LangGraph agent graph."""
-
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
@@ -27,8 +25,8 @@ graph_builder.add_node('compiler_node',  compiler_node)
 graph_builder.add_edge(START,             'summarize_node')
 graph_builder.add_edge('summarize_node',  'cooper_node')
 
-# Empty intent → Cooper replied directly (chat/out-of-scope) → END
-# Non-empty list → fan out to all matched specialist nodes in parallel
+# Empty intent - Cooper replied directly (chat/out-of-scope) - END
+# Non-empty list - fan out to all matched specialist nodes in parallel
 graph_builder.add_conditional_edges(
     'cooper_node',
     lambda state: state['intent'] if state['intent'] else 'done',

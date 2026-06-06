@@ -1,11 +1,10 @@
 from .model_func import fetch_model
-from .context import _fired
+from .context import _fired, log
 from .state import State
 
 
 def model_node(state: State):
-    if not _fired:
-        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    log.info('  [MODEL]  %s', state.get('model_number'))
     _fired.append('[MODEL]')
     info = fetch_model(state.get('model_number'))
     if not info:

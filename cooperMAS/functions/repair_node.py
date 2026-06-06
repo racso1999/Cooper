@@ -1,4 +1,4 @@
-from .context import _fired
+from .context import _fired, log
 from .utils import _text
 from .config import rag_llm
 from .vectorstore import vectorstore
@@ -6,8 +6,7 @@ from .state import State
 
 
 def repair_node(state: State):
-    if not _fired:
-        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    log.info('  [RAG]    %s', state['messages'][-1].content[:60])
     _fired.append('[RAG]')
     query     = state['messages'][-1].content
     documents = vectorstore.similarity_search(query, k=5)

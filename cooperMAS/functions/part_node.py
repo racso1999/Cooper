@@ -1,11 +1,10 @@
 from .part_func import fetch_part
-from .context import _fired
+from .context import _fired, log
 from .state import State
 
 
 def part_node(state: State):
-    if not _fired:
-        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    log.info('  [PART]   %s', state.get('part_number'))
     _fired.append('[PART]')
     info = fetch_part(state.get('part_number'))
     if not info:

@@ -1,164 +1,112 @@
 # Cooper — PartSelect AI Assistant
 
-Cooper is a multi-agent AI chatbot for PartSelect. It can look up appliance parts and models, provide repair guidance, and check order status. The backend is a LangGraph agent graph served via FastAPI. The frontend is a Next.js chat UI.
+Cooper is a multi-agent AI chatbot for PartSelect, handling appliance part lookups, model diagnostics, repair guidance, and order status.
 
 ---
 
-## Prerequisites
+## Running Cooper
 
-- Python 3.11+
-- Node.js 18+
-- An OpenAI API key
+### Step 1 — Install Docker Desktop
 
----
+Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for your operating system. Once installed, open it and wait until the Docker icon in your menu bar (Mac) or taskbar (Windows) shows it is running.
 
-## Setup
+### Step 2 — Download this repository
 
-### 1. Clone the repository
+Click the green **Code** button on GitHub and select **Download ZIP**. Unzip the folder somewhere on your computer.
+
+Alternatively, if you have Git installed:
 
 ```bash
 git clone <repo-url>
 cd Cooper
 ```
 
-### 2. Create a Python virtual environment
+### Step 3 — Add your API key
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
+Inside the project folder, create a file called `.env` (note the dot at the start) and add your OpenAI API key:
+
+```
+OPENAI_API_KEY=sk-...
 ```
 
-### 3. Install Python dependencies
+You can get an API key from [platform.openai.com](https://platform.openai.com/api-keys).
+
+### Step 4 — Start the app
+
+Open a terminal, navigate to the project folder, and run:
 
 ```bash
+docker compose up --build
+```
+
+The first time this runs it will take a few minutes to download and build everything. You will see logs scrolling — wait until you see:
+
+```
+✓ Ready in ...ms
+```
+
+### Step 5 — Open Cooper
+
+Go to **http://localhost:3000** in your browser.
+
+---
+
+To stop Cooper, press `Ctrl+C` in the terminal, then run:
+
+```bash
+docker compose down
+```
+
+Next time you want to start it again, just run `docker compose up` (no `--build` needed).
+
+---
+
+## Local Setup (without Docker)
+
+**Requirements:** Python 3.11+, Node.js 18+, OpenAI API key.
+
+```bash
+# 1. Install Python dependencies
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 4. Add your OpenAI API key
+# 2. Add your API keys
+cat > cooperMAS/.env << EOF
+OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=...        # optional, only needed for Gemini models
+EOF
 
-Create a `.env` file inside the `cooperMAS/` directory:
+# 3. Seed the database
+python cooperMAS/database_seeder.py
 
-```bash
-echo "OPENAI_API_KEY=sk-..." > cooperMAS/.env
-```
-
-### 5. Seed the database
-
-The orders database needs to be populated before the backend starts:
-
-```bash
-cd cooperMAS
-python database_seeder.py
-cd ..
-```
-
-### 6. Install frontend dependencies
-
-```bash
-cd frontend
-npm install
-cd ..
+# 4. Install frontend dependencies
+cd frontend && npm install && cd ..
 ```
 
 ---
 
-## Running the app
+## Running
 
-You need two terminals running simultaneously.
-
-### Terminal 1 — Backend
+Open two terminals:
 
 ```bash
-source venv/bin/activate
-cd cooperMAS
+# Terminal 1 — backend
+source venv/bin/activate && cd cooperMAS
 uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The API will be available at `http://localhost:8000`.
-
-### Terminal 2 — Frontend
-
 ```bash
-cd frontend
-npm run dev
+# Terminal 2 — frontend
+cd frontend && npm run dev
 ```
 
-The chat UI will be available at `http://localhost:3000`.
-
----
-
-## Using Cooper
-
-Open `http://localhost:3000` in your browser. Type a message and press Enter.
-
-Cooper can handle four types of requests:
-
-**Part lookup**
-> "Look up part PS11752778"
-> "What is part WPW10321304?"
-
-**Model lookup**
-> "My WDT780SAEM1 dishwasher won't drain, what parts should I check?"
-> "Look up model WRS325SDHZ"
-
-**Repair guidance**
-> "My fridge is leaking water from the bottom"
-> "My dishwasher is not cleaning properly"
-
-**Order status**
-> "Check my order ORD-10042 for jones.oscar@hotmail.com"
-
-Cooper will ask for clarification if it needs more information (e.g. a model number without a symptom). Multiple lookups can be requested in a single message.
-
----
-
-## Project structure
-
-```
-Cooper/
-├── requirements.txt
-├── cooperMAS/
-│   ├── server.py           # FastAPI server
-│   ├── graph.py            # LangGraph agent graph
-│   ├── cooper.py           # CLI interface
-│   ├── database_seeder.py  # Seeds orders.db with sample data
-│   ├── data/
-│   │   ├── orders.db       # SQLite orders database
-│   │   └── repair_info.txt # Repair knowledge base
-│   ├── prompts/
-│   │   ├── cooper_system.md
-│   │   └── cooper_compiler.md
-│   └── functions/
-│       ├── state.py         # Shared graph state + output schema
-│       ├── config.py        # LLM clients
-│       ├── context.py       # Shared _fired tracker
-│       ├── utils.py         # LLM response text helper
-│       ├── prompts.py       # Prompt loader
-│       ├── vectorstore.py   # RAG vector store (repair knowledge)
-│       ├── cooper_node.py   # Entry node — intent routing
-│       ├── part_node.py     # Part lookup node
-│       ├── part_func.py     # PartSelect part scraper
-│       ├── model_node.py    # Model lookup node
-│       ├── model_func.py    # PartSelect model scraper
-│       ├── repair_node.py   # RAG repair guidance node
-│       ├── order_node.py    # Order lookup node
-│       ├── compiler_node.py # Response synthesis node
-│       └── summarize_node.py# Conversation summarisation node
-└── frontend/
-    └── src/app/
-        ├── page.tsx         # Chat UI
-        └── api/chat/
-            └── route.ts     # Next.js proxy to backend
-```
+Open `http://localhost:3000`.
 
 ---
 
 ## CLI mode
 
-You can also run Cooper directly in the terminal without the frontend:
-
 ```bash
-source venv/bin/activate
-cd cooperMAS
+source venv/bin/activate && cd cooperMAS
 python cooper.py
 ```

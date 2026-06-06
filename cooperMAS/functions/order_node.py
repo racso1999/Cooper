@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from .context import _fired
+from .context import _fired, log
 from .state import State
 
 # Resolve path relative to this file so it works from any working directory.
@@ -9,8 +9,7 @@ DB_PATH = Path(__file__).parent.parent / 'data' / 'orders.db'
 
 
 def order_node(state: State):
-    if not _fired:
-        print("\nI'm just gathering some more information for you, hold tight...\n", flush=True)
+    log.info('  [ORDER]  %s', state.get('order_id'))
     _fired.append('[ORDER]')
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
