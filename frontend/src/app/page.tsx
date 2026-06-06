@@ -146,7 +146,7 @@ export default function Home() {
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="bg-[#2a2a2a] text-[#f0f0f0] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap max-w-xl">
+              <div className="bg-[#2a2a2a] text-[#f0f0f0] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap max-w-xl" style={{ fontWeight: 550 }}>
                 {m.content}
               </div>
             </div>
@@ -156,7 +156,7 @@ export default function Home() {
                 <CooperAvatar />
                 <span className="text-[#E8981A] font-bold text-sm">Cooper</span>
               </div>
-              <p className="text-[#cccccc] text-sm leading-relaxed">
+              <p className="text-[#cccccc] text-sm leading-relaxed" style={{ fontWeight: 550 }}>
                 {renderMessage(m.content)}
               </p>
             </div>
