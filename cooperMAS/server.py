@@ -44,13 +44,16 @@ async def chat(req: ChatRequest):
                 intent = chunk["cooper_node"].get("intent") or []
                 messages = chunk["cooper_node"].get("messages") or []
                 if intent:
+                    # Cooper identified a specialist task — notify the frontend while nodes run
                     yield f"data: {json.dumps({'type': 'status', 'message': 'Fetching some more information, hold tight...'})}\n\n"
                 elif messages:
+                    # Cooper answered directly (no specialist needed) — send reply immediately
                     msg = messages[-1]
                     content = msg.content if hasattr(msg, "content") else msg.get("content", "")
                     yield f"data: {json.dumps({'type': 'reply', 'message': content})}\n\n"
 
             elif "compiler_node" in chunk:
+                # Compiler has assembled the specialist data into a final response
                 messages = chunk["compiler_node"].get("messages") or []
                 if messages:
                     msg = messages[-1]
